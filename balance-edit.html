@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Panel - User Management</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 500px;
+      margin: 30px auto;
+      background: #f9f9f9;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 15px #aaa;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: bold;
+    }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      box-sizing: border-box;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+    button {
+      margin-top: 20px;
+      padding: 12px;
+      width: 100%;
+      background: #0072ff;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #005bb5;
+    }
+    .user-info {
+      margin-top: 25px;
+      background: #e3f2fd;
+      padding: 15px;
+      border-radius: 10px;
+      font-size: 16px;
+    }
+    .error {
+      margin-top: 20px;
+      color: red;
+      font-weight: bold;
+      text-align: center;
+    }
+    .success {
+      margin-top: 20px;
+      color: green;
+      font-weight: bold;
+      text-align: center;
+    }
+    .balance-change {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    .balance-change button {
+      flex: 1;
+      background: #43a047;
+      font-weight: bold;
+    }
+    .balance-change button.withdraw {
+      background: #d32f2f;
+    }
+  </style>
+</head>
+<body>
+  <h2>Admin Panel - Manage User Balance</h2>
+
+  <label for="uidInput">Enter User UID:</label>
+  <input type="text" id="uidInput" placeholder="User UID" />
+
+  <button id="fetchUserBtn">Fetch User Data</button>
+
+  <div id="errorMsg" class="error"></div>
+  <div id="successMsg" class="success"></div>
+
+  <div id="userInfo" class="user-info" style="display:none;">
+    <p><strong>Email:</strong> <span id="userEmail"></span></p>
+    <p><strong>Balance:</strong> BDT <span id="userBalance"></span></p>
+    <p><strong>Team Count:</strong> <span id="userTeamCount"></span></p>
+
+    <label for="balanceAmount">Amount to Add / Deduct:</label>
+    <input type="number" id="balanceAmount" placeholder="Enter amount" />
+
+    <div class="balance-change">
+      <button id="addBalanceBtn">Add Balance</button>
+      <button id="deductBalanceBtn" class="withdraw">Deduct Balance</button>
+    </div>
+  </div>
+
+  <!-- Firebase JS SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+    import { getDatabase, ref, get, set, update } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCwiUR6oJRjTBFa2ajTdb-5Owc_I6Dw2S0",
+      authDomain: "fir-bot-bd5e8.firebaseapp.com",
+      databaseURL: "https://fir-bot-bd5e8-default-rtdb.firebaseio.com",
+      projectId: "fir-bot-bd5e8",
+      storageBucket: "fir-bot-bd5e8.appspot.com",
+      messagingSenderId: "501448994050",
+      appId: "1:501448994050:web:fb1c102dcaeb23bf93261b",
+      measurementId: "G-3ERPTBHN6N"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const uidInput = document.getElementById('uidInput');
+    const fetchUserBtn = document.getElementById('fetchUserBtn');
+    const errorMsg = document.getElementById('errorMsg');
+    const successMsg = document.getElementById('successMsg');
+    const userInfo = document.getElementById('userInfo');
+    const userEmail = document.getElementById('userEmail');
+    const userBalance = document.getElementById('userBalance');
+    const userTeamCount = document.getElementById('userTeamCount');
+    const balanceAmount = document.getElementById('balanceAmount');
+    const addBalanceBtn = document.getElementById('addBalanceBtn');
+    const deductBalanceBtn = document.getElementById('deductBalanceBtn');
+
+    let currentUserData = null;
+    let currentUID = null;
+
+    function resetMessages() {
+      errorMsg.textContent = '';
+      successMsg.textContent = '';
+    }
+
+    function displayUserData(data) {
+      userEmail.textContent = data.email || 'N/A';
+      userBalance.textContent = data.balance != null ? data.balance : 0;
+      userTeamCount.textContent = data.teamCount != null ? data.teamCount : 0;
+      userInfo.style.display = 'block';
+    }
+
+    fetchUserBtn.addEventListener('click', () => {
+      resetMessages();
+      userInfo.style.display = 'none';
+      const uid = uidInput.value.trim();
+      if (!uid) {
+        errorMsg.textContent = 'Please enter a UID.';
+        return;
+      }
+      currentUID = uid;
+
+      const userRef = ref(db, `users/${uid}`);
+
+      get(userRef).then(snapshot => {
+        if (snapshot.exists()) {
+          currentUserData = snapshot.val();
+          displayUserData(currentUserData);
+          successMsg.textContent = 'User data fetched successfully.';
+        } else {
+          errorMsg.textContent = 'User not found!';
+          currentUserData = null;
+        }
+      }).catch(error => {
+        errorMsg.textContent = 'Error fetching user data: ' + error.message;
+      });
+    });
+
+    addBalanceBtn.addEventListener('click', () => {
+      resetMessages();
+      if (!currentUserData || !currentUID) {
+        errorMsg.textContent = 'Fetch a valid user first.';
+        return;
+      }
+      const amount = parseFloat(balanceAmount.value);
+      if (isNaN(amount) || amount <= 0) {
+        errorMsg.textContent = 'Please enter a valid amount greater than 0.';
+        return;
+      }
+      let newBalance = (currentUserData.balance || 0) + amount;
+
+      update(ref(db, `users/${currentUID}`), { balance: newBalance })
+        .then(() => {
+          successMsg.textContent = `Added BDT ${amount} to user balance.`;
+          currentUserData.balance = newBalance;
+          userBalance.textContent = newBalance;
+          balanceAmount.value = '';
+        })
+        .catch(error => {
+          errorMsg.textContent = 'Error updating balance: ' + error.message;
+        });
+    });
+
+    deductBalanceBtn.addEventListener('click', () => {
+      resetMessages();
+      if (!currentUserData || !currentUID) {
+        errorMsg.textContent = 'Fetch a valid user first.';
+        return;
+      }
+      const amount = parseFloat(balanceAmount.value);
+      if (isNaN(amount) || amount <= 0) {
+        errorMsg.textContent = 'Please enter a valid amount greater than 0.';
+        return;
+      }
+      if ((currentUserData.balance || 0) < amount) {
+        errorMsg.textContent = 'User balance is insufficient for this deduction.';
+        return;
+      }
+      let newBalance = (currentUserData.balance || 0) - amount;
+
+      update(ref(db, `users/${currentUID}`), { balance: newBalance })
+        .then(() => {
+          successMsg.textContent = `Deducted BDT ${amount} from user balance.`;
+          currentUserData.balance = newBalance;
+          userBalance.textContent = newBalance;
+          balanceAmount.value = '';
+        })
+        .catch(error => {
+          errorMsg.textContent = 'Error updating balance: ' + error.message;
+        });
+    });
+
+  </script>
+</body>
+</html>
