@@ -1,16 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Admin Panel - Gift Codes</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body {
       font-family: Arial, sans-serif;
       padding: 20px;
       background: #f3f3f3;
     }
-
     .container {
       max-width: 600px;
       margin: auto;
@@ -19,13 +18,10 @@
       padding: 20px;
       box-shadow: 0 5px 20px rgba(0,0,0,0.1);
     }
-
     h2 {
-      color: #333;
-      margin-bottom: 20px;
       text-align: center;
+      margin-bottom: 20px;
     }
-
     input[type="number"] {
       width: 100%;
       padding: 10px;
@@ -34,7 +30,6 @@
       border-radius: 8px;
       border: 1px solid #ccc;
     }
-
     button {
       width: 100%;
       padding: 12px;
@@ -45,15 +40,12 @@
       border-radius: 8px;
       cursor: pointer;
     }
-
     button:hover {
       background-color: #45a049;
     }
-
     .code-list {
       margin-top: 30px;
     }
-
     .code-item {
       background: #fafafa;
       padding: 12px;
@@ -64,26 +56,25 @@
       justify-content: space-between;
       font-size: 14px;
     }
-
     .used {
       color: red;
+      font-weight: bold;
     }
-
     .unused {
       color: green;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h2>🎁 Gift Code Admin Panel</h2>
-
     <input type="number" id="amountInput" placeholder="Enter amount (e.g. 100)" />
-    <button onclick="generateGiftCode()">Generate Gift Code</button>
+    <button id="generateBtn">Generate Gift Code</button>
 
     <div class="code-list" id="codeList">
       <h3>All Gift Codes:</h3>
-      <div id="codesContainer"></div>
+      <div id="codesContainer">Loading gift codes...</div>
     </div>
   </div>
 
@@ -102,7 +93,11 @@
       appId: "1:501448994050:web:fb1c102dcaeb23bf93261b"
     };
 
-    firebase.initializeApp(firebaseConfig);
+    // Initialize Firebase app only once
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+
     const db = firebase.database();
 
     function generateRandomCode(length = 8) {
@@ -114,52 +109,80 @@
       return code;
     }
 
-    function generateGiftCode() {
-      const amount = parseInt(document.getElementById("amountInput").value);
+    async function generateGiftCode() {
+      const amountInput = document.getElementById('amountInput');
+      const amount = parseInt(amountInput.value);
+
       if (!amount || amount <= 0) {
-        alert("Please enter a valid amount.");
+        alert('Please enter a valid amount greater than 0.');
         return;
       }
 
-      const newCode = generateRandomCode();
-      db.ref("giftcodes/" + newCode).set({
-        amount: amount,
-        used: false
-      }).then(() => {
-        alert("✅ Gift Code Generated: " + newCode);
-        document.getElementById("amountInput").value = '';
+      let newCode = generateRandomCode();
+
+      // Ensure unique code
+      try {
+        const snapshot = await db.ref('giftcodes/' + newCode).get();
+        if (snapshot.exists()) {
+          // If code exists, regenerate and check again (recursive)
+          return generateGiftCode();
+        }
+      } catch (err) {
+        alert('Error checking code uniqueness: ' + err.message);
+        return;
+      }
+
+      // Save new gift code
+      try {
+        await db.ref('giftcodes/' + newCode).set({
+          amount: amount,
+          used: false
+        });
+        alert(`✅ Gift Code Generated: ${newCode} (৳${amount})`);
+        amountInput.value = '';
         loadGiftCodes();
-      }).catch(err => {
-        alert("Error: " + err.message);
-      });
+      } catch (err) {
+        alert('Error saving gift code: ' + err.message);
+      }
     }
 
-    function loadGiftCodes() {
-      const container = document.getElementById("codesContainer");
-      container.innerHTML = "Loading...";
+    async function loadGiftCodes() {
+      const container = document.getElementById('codesContainer');
+      container.innerHTML = 'Loading gift codes...';
 
-      db.ref("giftcodes").once("value", snapshot => {
-        container.innerHTML = "";
-        const data = snapshot.val();
-        if (!data) {
-          container.innerHTML = "<p>No gift codes found.</p>";
+      try {
+        const snapshot = await db.ref('giftcodes').get();
+        if (!snapshot.exists()) {
+          container.innerHTML = '<p>No gift codes found.</p>';
           return;
         }
+        const data = snapshot.val();
 
-        Object.entries(data).reverse().forEach(([code, details]) => {
-          const div = document.createElement("div");
-          div.className = "code-item";
+        // Sort codes by key descending (newest first)
+        const entries = Object.entries(data).sort((a, b) => {
+          if (a[0] < b[0]) return 1;
+          if (a[0] > b[0]) return -1;
+          return 0;
+        });
+
+        container.innerHTML = '';
+        entries.forEach(([code, details]) => {
+          const div = document.createElement('div');
+          div.className = 'code-item';
           div.innerHTML = `
             <span><strong>${code}</strong> — ৳${details.amount}</span>
-            <span class="${details.used ? 'used' : 'unused'}">
-              ${details.used ? 'USED' : 'UNUSED'}
-            </span>
+            <span class="${details.used ? 'used' : 'unused'}">${details.used ? 'USED' : 'UNUSED'}</span>
           `;
           container.appendChild(div);
         });
-      });
+      } catch (err) {
+        container.innerHTML = 'Error loading gift codes: ' + err.message;
+      }
     }
 
+    document.getElementById('generateBtn').addEventListener('click', generateGiftCode);
+
+    // Load gift codes on page load
     loadGiftCodes();
   </script>
 </body>
